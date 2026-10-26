@@ -22,7 +22,8 @@ namespace CapriDesktop
     {
         [DataMember(Name = "num_predict")] public int Limit = 90;
         [DataMember(Name = "temperature")] public double Temperature = 0.85;
-        [DataMember(Name = "num_ctx")] public int Context = 4096;
+        [DataMember(Name = "num_ctx")] public int Context = 2048;
+        [DataMember(Name = "num_gpu", EmitDefaultValue = false)] public int? GpuLayers;
     }
 
     [DataContract]
@@ -176,7 +177,7 @@ namespace CapriDesktop
             }
             else
             {
-                ChatReply reply = Send<ChatReply>(Ollama + "/api/chat", new ChatRequest { Model = model, Messages = messages.ToArray(), Think = false, Options = new ChatOptions() }, 180000);
+                ChatReply reply = Send<ChatReply>(Ollama + "/api/chat", new ChatRequest { Model = model, Messages = messages.ToArray(), Think = false, Options = OllamaOptions() }, 180000);
                 if (reply.Error != null) throw new BrainException(reply.Error);
                 raw = reply.Message == null ? null : reply.Message.Content;
             }
@@ -199,7 +200,13 @@ namespace CapriDesktop
             {
                 Engine local = Local;
                 if (local != null) local.Ensure(LocalPick);
-                else Send<ChatReply>(Ollama + "/api/chat", new ChatRequest { Model = model, Messages = new ChatMessage[0] }, 180000);
+                else Send<ChatReply>(Ollama + "/api/chat", new ChatRequest
+                {
+                    Model = model,
+                    Messages = new ChatMessage[0],
+                    Think = false,
+                    Options = OllamaOptions()
+                }, 180000);
             }
             catch (WebException) { } catch (BrainException) { } catch (IOException) { } catch (SerializationException) { }
         }
@@ -239,6 +246,29 @@ namespace CapriDesktop
         }
 
         internal void Forget() { lock (gate) history.Clear(); }
+
+        private static int OllamaContext()
+        {
+            string value = Environment.GetEnvironmentVariable("CAPRI_OLLAMA_CONTEXT");
+            if (string.IsNullOrEmpty(value)) return 2048;
+            int context;
+            if (!int.TryParse(value, out context) || context < 512) throw new BrainException("CAPRI_OLLAMA_CONTEXT must be at least 512.");
+            return context;
+        }
+
+        private static int? OllamaGpuLayers()
+        {
+            string value = Environment.GetEnvironmentVariable("CAPRI_OLLAMA_NUM_GPU");
+            if (string.IsNullOrEmpty(value)) return null;
+            int layers;
+            if (!int.TryParse(value, out layers) || layers < 0) throw new BrainException("CAPRI_OLLAMA_NUM_GPU must be zero or greater.");
+            return layers;
+        }
+
+        private static ChatOptions OllamaOptions()
+        {
+            return new ChatOptions { Context = OllamaContext(), GpuLayers = OllamaGpuLayers() };
+        }
 
         internal static string Explain(Exception error)
         {

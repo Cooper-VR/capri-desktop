@@ -72,6 +72,7 @@ namespace CapriDesktop
         [DataMember] public int AgentVersion;
         [DataMember] public string Mic;
         [DataMember] public bool Whisper;
+        [DataMember] public bool Qwen;
     }
 
     [DataContract]
@@ -185,6 +186,7 @@ namespace CapriDesktop
         private bool ollamaRunning;
         internal bool SettingUp;
         internal bool Whisper { get { return preferences.Whisper; } }
+        internal bool Qwen { get { return preferences.Qwen; } }
         private TalkState talkState;
         private string heard;
         private string reply;
@@ -198,7 +200,9 @@ namespace CapriDesktop
         private readonly Voice voice = new Voice();
         private readonly Ears ears = new Ears();
         private readonly LocalWhisper whisper = new LocalWhisper();
+        private readonly LocalQwen qwen = new LocalQwen();
         private Process whisperServer;
+        private Process qwenServer;
         private readonly Speaker speaker;
         private volatile Agent agent;
         private bool chatting;
@@ -298,6 +302,11 @@ namespace CapriDesktop
             voice.Key = Voice.Unprotect(preferences.VoiceKey);
             voice.VoiceId = string.IsNullOrEmpty(preferences.VoiceId) ? null : preferences.VoiceId;
             voice.Model = string.IsNullOrEmpty(preferences.VoiceModel) ? null : preferences.VoiceModel;
+            if (preferences.Qwen)
+            {
+                try { StartQwenServer(); }
+                catch (Exception error) { preferences.Qwen = false; mainframe.VoiceNote("Qwen TTS unavailable: " + Voice.Short(error.Message), true); }
+            }
             ShowVoice();
             mainframe.ShowMic(MicName(preferences.Mic));
             pill.Typing += OpenTyper;
@@ -1112,8 +1121,8 @@ namespace CapriDesktop
 
         internal void TestVoice()
         {
-            if (voice.Key == null && Speak == null) { mainframe.VoiceNote("Paste your ElevenLabs API key first.", true); return; }
-            if (voice.VoiceId == null && Speak == null) { mainframe.VoiceNote("Paste your Voice ID first.", true); return; }
+            if (!preferences.Qwen && voice.Key == null && Speak == null) { mainframe.VoiceNote("Paste your ElevenLabs API key first, or enable local Qwen TTS.", true); return; }
+            if (!preferences.Qwen && voice.VoiceId == null && Speak == null) { mainframe.VoiceNote("Paste your Voice ID first.", true); return; }
             if (hidden) SetHidden(false);
             brain.Cancel();
             heard = "voice check";
@@ -1151,6 +1160,77 @@ namespace CapriDesktop
             string name = "custom voice";
             if (voices != null) foreach (VoiceEntry entry in voices.Voices) if (entry.Id == voice.VoiceId && entry.Name != null) name = entry.Name;
             mainframe.VoiceNote(voice.Key == null ? "Needs your ElevenLabs API key." : voice.VoiceId == null ? "Needs your Voice ID." : "ElevenLabs · " + name, false);
+        }
+
+        internal void ToggleQwen()
+        {
+            bool enabled = !preferences.Qwen;
+            if (enabled)
+            {
+                try { StartQwenServer(); }
+                catch (Exception error) { mainframe.VoiceNote("Qwen TTS unavailable: " + Voice.Short(error.Message), true); return; }
+            }
+            else StopQwenServer();
+            preferences.Qwen = enabled;
+            SavePreferences();
+            mainframe.ShowVoice(voice.Key == null ? null : Voice.Tail(voice.Key), voice.VoiceId, voice.Model, voices);
+            mainframe.VoiceNote(enabled ? "Local Qwen TTS enabled." : "ElevenLabs selected.", false);
+        }
+
+        private void StartQwenServer()
+        {
+            if (QwenPortOpen()) return;
+            string root = FindQwenRoot();
+            string python = Environment.GetEnvironmentVariable("CAPRI_QWEN_PYTHON");
+            if (string.IsNullOrEmpty(python)) python = Path.Combine(root, ".venv-qwen", "Scripts", "python.exe");
+            if (!File.Exists(python)) throw new FileNotFoundException("Qwen Python was not found. Set CAPRI_QWEN_PYTHON or create .venv-qwen.", python);
+            ProcessStartInfo info = new ProcessStartInfo(python, "-m uvicorn qwen_server:app --host 127.0.0.1 --port 8001");
+            info.WorkingDirectory = root;
+            info.UseShellExecute = false;
+            info.CreateNoWindow = true;
+            string device = Environment.GetEnvironmentVariable("QWEN_DEVICE");
+            string dtype = Environment.GetEnvironmentVariable("QWEN_DTYPE");
+            if (!string.IsNullOrEmpty(device)) info.EnvironmentVariables["QWEN_DEVICE"] = device;
+            if (!string.IsNullOrEmpty(dtype)) info.EnvironmentVariables["QWEN_DTYPE"] = dtype;
+            qwenServer = Process.Start(info);
+            if (qwenServer == null) throw new InvalidOperationException("Qwen TTS server could not be started.");
+            for (int attempt = 0; attempt < 120; attempt++)
+            {
+                if (qwenServer.HasExited) { qwenServer = null; throw new InvalidOperationException("Qwen TTS stopped while starting. Check .venv-qwen and qwen_server.py."); }
+                if (QwenPortOpen()) return;
+                Thread.Sleep(1000);
+            }
+            StopQwenServer();
+            throw new InvalidOperationException("Qwen TTS did not become ready. Check the Qwen model and Python environment.");
+        }
+
+        private static string FindQwenRoot()
+        {
+            DirectoryInfo folder = new DirectoryInfo(AppContext.BaseDirectory);
+            for (int i = 0; i < 10 && folder != null; i++, folder = folder.Parent)
+            {
+                if (File.Exists(Path.Combine(folder.FullName, "qwen_server.py"))) return folder.FullName;
+            }
+            throw new DirectoryNotFoundException("qwen_server.py was not found above the Capri executable.");
+        }
+
+        private static bool QwenPortOpen()
+        {
+            using (TcpClient client = new TcpClient())
+            {
+                try { return client.ConnectAsync("127.0.0.1", 8001).Wait(250); }
+                catch (AggregateException) { return false; }
+                catch (SocketException) { return false; }
+            }
+        }
+
+        private void StopQwenServer()
+        {
+            Process running = qwenServer;
+            qwenServer = null;
+            if (running == null) return;
+            try { if (!running.HasExited) running.Kill(); }
+            finally { running.Dispose(); }
         }
 
         private float TalkScale()
@@ -1498,7 +1578,7 @@ namespace CapriDesktop
         {
             if (ticket != asking || IsDisposed) return;
             voice.Stop();
-            Func<string, byte[]> speak = Speak;
+            Func<string, byte[]> speak = preferences.Qwen ? qwen.Speak : Speak;
             if (speak == null && !testing && voice.Ready) speak = voice.Speak;
             string words = Voice.Spoken(said);
             if (speak == null || words.Length == 0) { Begin(ticket, said, state, null); return; }
@@ -1700,6 +1780,7 @@ namespace CapriDesktop
             engine.Cancel = true;
             engine.Stop();
             StopWhisperServer();
+            StopQwenServer();
             mainframe.Quitting = true;
             mainframe.Close();
             tray.Visible = false;

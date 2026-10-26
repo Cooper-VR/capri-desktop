@@ -40,6 +40,7 @@ namespace CapriDesktop
         private readonly ContextMenuStrip speechModelMenu;
         private readonly Label voiceNote;
         private readonly Toggle whisper;
+        private readonly Toggle qwen;
         private readonly Key keyHelp;
         private readonly Label shortcut;
         private bool shortcutReady;
@@ -124,7 +125,8 @@ namespace CapriDesktop
             Lower(Make("Test", 280, 278, 76, 28, delegate { capri.TestVoice(); }));
             muteShortcut = Lower(Caption("Ctrl + Alt + N mutes your mic", 28, 313, Look.Mono(8.5f, FontStyle.Regular, GraphicsUnit.Point), Look.Dim));
             whisper = Lower(Check("Use local Whisper input", 28, 337, 220, delegate { if (!syncing) capri.ToggleWhisper(); }));
-            voiceNote = Lower(Caption("", 28, 369, Font, Look.Dim));
+            qwen = Lower(Check("Use local Qwen TTS", 28, 361, 220, delegate { if (!syncing) capri.ToggleQwen(); }));
+            voiceNote = Lower(Caption("", 28, 393, Font, Look.Dim));
             int v = VoiceHeight;
             Lower(Caption("CAPRI >", 28, 184 + v, Look.Mono(9f, FontStyle.Bold, GraphicsUnit.Point), Look.Yellow));
             showHide = Lower(Make("Hide Capri", 28, 206 + v, 104, 28, delegate { capri.ToggleHidden(); }));
@@ -382,6 +384,7 @@ namespace CapriDesktop
                 }
             }
             speechModels.Invalidate();
+            qwen.Checked = capri.Qwen;
         }
 
         internal void ShowShortcut(bool talk, bool mute)

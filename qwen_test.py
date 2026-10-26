@@ -6,12 +6,12 @@ from qwen_tts import Qwen3TTSModel
 
 use_gpu = torch.cuda.is_available()
 device = os.getenv("QWEN_DEVICE", "cuda:0" if use_gpu else "cpu")
-dtype_name = os.getenv("QWEN_DTYPE", "bfloat16" if device.startswith("cuda") else "float32")
+dtype_name = os.getenv("QWEN_DTYPE", "float16" if device.startswith("cuda") else "float32")
 try:
     dtype = getattr(torch, dtype_name)
 except AttributeError as error:
     raise ValueError("QWEN_DTYPE must be float32, float16, or bfloat16") from error
-attention = os.getenv("QWEN_ATTENTION", "eager")
+attention = os.getenv("QWEN_ATTENTION", "sdpa")
 
 print(f"Loading Qwen on {device} with {dtype_name}...")
 model = Qwen3TTSModel.from_pretrained(
@@ -23,11 +23,11 @@ model = Qwen3TTSModel.from_pretrained(
 
 ref_audio = os.getenv(
     "QWEN_REFERENCE_AUDIO",
-    "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-TTS-Repo/clone.wav",
+    "CapriAudio.wav",
 )
 ref_text = (
-    "Okay. Yeah. I resent you. I love you. I respect you. "
-    "But you know what? You blew it! And thanks to you."
+    "Don't be shy, you were almost a puddle of goo on their windshield. "
+    "It wasn't me who crashed them, it was all you blue."
 )
 
 print("Preparing the cloned voice...")
@@ -42,6 +42,7 @@ while text:
         text=text,
         language="English",
         voice_clone_prompt=voice_prompt,
+        non_streaming_mode=True,
     )
 
     sf.write("qwen-test-output.wav", wavs[0], sample_rate)
