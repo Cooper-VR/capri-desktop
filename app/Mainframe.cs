@@ -39,6 +39,7 @@ namespace CapriDesktop
         private readonly Key speechModels;
         private readonly ContextMenuStrip speechModelMenu;
         private readonly Label voiceNote;
+        private readonly Toggle whisper;
         private readonly Key keyHelp;
         private readonly Label shortcut;
         private bool shortcutReady;
@@ -122,7 +123,8 @@ namespace CapriDesktop
             mics.AccessibleName = "Microphone";
             Lower(Make("Test", 280, 278, 76, 28, delegate { capri.TestVoice(); }));
             muteShortcut = Lower(Caption("Ctrl + Alt + N mutes your mic", 28, 313, Look.Mono(8.5f, FontStyle.Regular, GraphicsUnit.Point), Look.Dim));
-            voiceNote = Lower(Caption("", 28, 337, Font, Look.Dim));
+            whisper = Lower(Check("Use local Whisper input", 28, 337, 220, delegate { if (!syncing) capri.ToggleWhisper(); }));
+            voiceNote = Lower(Caption("", 28, 369, Font, Look.Dim));
             int v = VoiceHeight;
             Lower(Caption("CAPRI >", 28, 184 + v, Look.Mono(9f, FontStyle.Bold, GraphicsUnit.Point), Look.Yellow));
             showHide = Lower(Make("Hide Capri", 28, 206 + v, 104, 28, delegate { capri.ToggleHidden(); }));
@@ -277,6 +279,7 @@ namespace CapriDesktop
             }
             motion.Checked = capri.Motion;
             onTop.Checked = capri.OnTop;
+            whisper.Checked = capri.Whisper;
             syncing = false;
         }
 

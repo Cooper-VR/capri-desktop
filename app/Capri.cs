@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
@@ -39,6 +40,7 @@ namespace CapriDesktop
                         Application.Run(app);
                         return app.TestFailed ? 1 : 0;
                     }
+
                 }
                 catch (Exception error)
                 {
@@ -69,6 +71,7 @@ namespace CapriDesktop
         [DataMember] public string AgentId;
         [DataMember] public int AgentVersion;
         [DataMember] public string Mic;
+        [DataMember] public bool Whisper;
     }
 
     [DataContract]
@@ -181,6 +184,7 @@ namespace CapriDesktop
         private Pick fit;
         private bool ollamaRunning;
         internal bool SettingUp;
+        internal bool Whisper { get { return preferences.Whisper; } }
         private TalkState talkState;
         private string heard;
         private string reply;
@@ -193,6 +197,8 @@ namespace CapriDesktop
         internal Func<string, byte[]> Speak;
         private readonly Voice voice = new Voice();
         private readonly Ears ears = new Ears();
+        private readonly LocalWhisper whisper = new LocalWhisper();
+        private Process whisperServer;
         private readonly Speaker speaker;
         private volatile Agent agent;
         private bool chatting;
@@ -299,6 +305,8 @@ namespace CapriDesktop
             pill.Mute += ToggleMic;
             ears.Heard += Listen;
             ears.Level += delegate(double value) { Post(delegate { pill.SetLevel(value); }); };
+            whisper.Heard += delegate(string text) { Post(delegate { if (chatting && preferences.Whisper) Hear(text, text, "> you: "); }); };
+            whisper.Failed += delegate(string problem) { Post(delegate { if (chatting && preferences.Whisper) mainframe.VoiceNote(problem, true); }); };
             box.Dismissed += delegate { if (box.Leaving < 0) box.Leaving = clock.Elapsed.TotalSeconds; };
             typer.Submitted += Hear;
             typer.VisibleChanged += delegate { if (!typer.Visible && replyDone >= 0) replyDone = clock.Elapsed.TotalSeconds; };
@@ -1030,8 +1038,74 @@ namespace CapriDesktop
             mainframe.ShowMic(MicName(preferences.Mic));
             if (!ears.Listening) return;
             ears.Stop();
+            whisper.Stop();
             try { ears.Start(); }
             catch (VoiceException error) { mainframe.VoiceNote(error.Message, true); StopChat(); }
+            if (preferences.Whisper) whisper.Start();
+        }
+
+        internal void ToggleWhisper()
+        {
+            if (chatting) StopChat();
+            bool enabled = !preferences.Whisper;
+            if (enabled)
+            {
+                try { StartWhisperServer(); }
+                catch (Exception error) { mainframe.VoiceNote(error.Message, true); return; }
+            }
+            else StopWhisperServer();
+            preferences.Whisper = enabled;
+            SavePreferences();
+            mainframe.Sync();
+        }
+
+        private void StartWhisperServer()
+        {
+            if (WhisperPortOpen()) return;
+            string root = FindWhisperRoot();
+            string python = Environment.GetEnvironmentVariable("CAPRI_WHISPER_PYTHON");
+            if (string.IsNullOrEmpty(python)) python = Path.Combine(root, ".venv-whisper", "Scripts", "python.exe");
+            if (!File.Exists(python)) throw new FileNotFoundException("Whisper Python was not found. Set CAPRI_WHISPER_PYTHON or create .venv-whisper.", python);
+            ProcessStartInfo info = new ProcessStartInfo(python, "-m uvicorn whisper_server:app --host 127.0.0.1 --port 8000");
+            info.WorkingDirectory = root;
+            info.UseShellExecute = false;
+            info.CreateNoWindow = true;
+            info.EnvironmentVariables["WHISPER_MODEL"] = "base";
+            info.EnvironmentVariables["WHISPER_DEVICE"] = "cpu";
+            info.EnvironmentVariables["WHISPER_COMPUTE_TYPE"] = "int8";
+            whisperServer = Process.Start(info);
+            if (whisperServer == null) throw new InvalidOperationException("Whisper server could not be started.");
+            Thread.Sleep(700);
+            if (whisperServer.HasExited) { whisperServer = null; throw new InvalidOperationException("Whisper server stopped while starting. Check the Python environment and whisper_server.py."); }
+        }
+
+        private static string FindWhisperRoot()
+        {
+            DirectoryInfo folder = new DirectoryInfo(AppContext.BaseDirectory);
+            for (int i = 0; i < 10 && folder != null; i++, folder = folder.Parent)
+            {
+                if (File.Exists(Path.Combine(folder.FullName, "whisper_server.py"))) return folder.FullName;
+            }
+            throw new DirectoryNotFoundException("whisper_server.py was not found above the Capri executable.");
+        }
+
+        private static bool WhisperPortOpen()
+        {
+            using (TcpClient client = new TcpClient())
+            {
+                try { return client.ConnectAsync("127.0.0.1", 8000).Wait(250); }
+                catch (AggregateException) { return false; }
+                catch (SocketException) { return false; }
+            }
+        }
+
+        private void StopWhisperServer()
+        {
+            Process running = whisperServer;
+            whisperServer = null;
+            if (running == null) return;
+            try { if (!running.HasExited) running.Kill(); }
+            finally { running.Dispose(); }
         }
 
         internal void OpenKeyPage() { OpenPage(KeysPage); }
@@ -1122,6 +1196,23 @@ namespace CapriDesktop
         private void ToggleChat()
         {
             if (chatting) { StopChat(); return; }
+            if (preferences.Whisper)
+            {
+                try { StartWhisperServer(); }
+                catch (Exception error) { mainframe.VoiceNote(error.Message, true); return; }
+                chatting = true;
+                ears.Muted = false;
+                if (!testing && !muteKey) muteKey = Native.RegisterHotKey(Handle, MuteKeyId, 0x0001 | 0x0002 | 0x4000, 0x4E);
+                pill.SetChat(true, false);
+                pillUntil = clock.Elapsed.TotalSeconds + 1.5;
+                brain.Cancel();
+                CloseTalk();
+                whisper.Start();
+                try { if (!testing) ears.Start(); }
+                catch (VoiceException error) { StopChat(); mainframe.VoiceNote(error.Message, true); return; }
+                mainframe.VoiceNote("Whisper input on. Talk to her.", false);
+                return;
+            }
             if (voice.Key == null || voice.VoiceId == null)
             {
                 heard = "(voice)";
@@ -1323,6 +1414,11 @@ namespace CapriDesktop
 
         private void Listen(short[] chunk)
         {
+            if (preferences.Whisper)
+            {
+                if (chatting && !speaker.Busy) whisper.Feed(chunk);
+                return;
+            }
             lock (waking)
             {
                 if (resting)
@@ -1603,6 +1699,7 @@ namespace CapriDesktop
             voice.Stop();
             engine.Cancel = true;
             engine.Stop();
+            StopWhisperServer();
             mainframe.Quitting = true;
             mainframe.Close();
             tray.Visible = false;

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <AssemblyName>Capri-Setup</AssemblyName>
+    <RootNamespace>CapriSetup</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\assets\chip.ico</ApplicationIcon>
+    <CapriPayloadPath>$(MSBuildProjectDirectory)\bin\Release\net8.0-windows\win-x64\publish\Capri.exe</CapriPayloadPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Agent.cs;Brain.cs;Capri.cs;Ears.cs;Engine.cs;Ledges.cs;LocalWhisper.cs;Mainframe.cs;Talk.cs;Voice.cs;AssemblyInfo.cs" />
+    <EmbeddedResource Include="..\assets\chip.ico" LogicalName="Capri.Chip.ico" />
+    <EmbeddedResource Include="..\assets\chip.png" LogicalName="Capri.Chip.png" />
+    <EmbeddedResource Include="$(CapriPayloadPath)" LogicalName="Capri.App.exe" />
+  </ItemGroup>
+</Project>

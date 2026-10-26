@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\assets\chip.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Setup.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\assets\chip.ico" LogicalName="Capri.Chip.ico" />
+    <EmbeddedResource Include="..\assets\chip.png" LogicalName="Capri.Chip.png" />
+    <EmbeddedResource Include="..\assets\fonts\ShareTechMono-Regular.ttf" LogicalName="Capri.Font.Mono.ttf" />
+    <EmbeddedResource Include="..\assets\sprites\blink.png" LogicalName="Capri.Sprite.blink.png" />
+    <EmbeddedResource Include="..\assets\sprites\blink_glitch.png" LogicalName="Capri.Sprite.blink_glitch.png" />
+    <EmbeddedResource Include="..\assets\sprites\dangle.png" LogicalName="Capri.Sprite.dangle.png" />
+    <EmbeddedResource Include="..\assets\sprites\glitch.png" LogicalName="Capri.Sprite.glitch.png" />
+    <EmbeddedResource Include="..\assets\sprites\grin.png" LogicalName="Capri.Sprite.grin.png" />
+    <EmbeddedResource Include="..\assets\sprites\idle.png" LogicalName="Capri.Sprite.idle.png" />
+    <EmbeddedResource Include="..\assets\sprites\mouth.png" LogicalName="Capri.Sprite.mouth.png" />
+    <EmbeddedResource Include="..\assets\sprites\perch.png" LogicalName="Capri.Sprite.perch.png" />
+    <EmbeddedResource Include="..\assets\sprites\perch_blink.png" LogicalName="Capri.Sprite.perch_blink.png" />
+    <EmbeddedResource Include="..\assets\sprites\perch_blink_glitch.png" LogicalName="Capri.Sprite.perch_blink_glitch.png" />
+    <EmbeddedResource Include="..\assets\sprites\perch_glitch.png" LogicalName="Capri.Sprite.perch_glitch.png" />
+    <EmbeddedResource Include="..\assets\sprites\sleep.png" LogicalName="Capri.Sprite.sleep.png" />
+    <EmbeddedResource Include="..\assets\sprites\wake.png" LogicalName="Capri.Sprite.wake.png" />
+  </ItemGroup>
+</Project>
